@@ -2,18 +2,19 @@ NAME 		= bc-tester
 
 CC 			= cc
 RM			= rm -f
-CFLAGS 		+= -Wall -Wextra -g #-O3
+CFLAGS 		+= -Wall -Wextra -O3
 CLINKS		= -lm
 
 SRC 		= bckey-tester.c\
 				bc-tester.c\
 				blowfish.c\
-				combo.c\
+				combos.c\
+				utils.c\
 				main.c\
-				order.c\
-				permute.c\
+				orders.c\
+				permutes.c\
 				progress.c\
-				separator.c\
+				separators.c\
 				variants.c
 
 OBJ 		= $(SRC:.c=.o)

@@ -20,10 +20,8 @@ static uint8_t *_hashKey(char *key, size_t keysize)
 	return (keyHash);
 }
 
-#include <stdio.h>
 bool BCKeyTester(uint8_t const *keyFile, char *key)
 {
-	// printf("key: %s\n", key);
 	size_t keysize = strlen(key);
 	if (keysize < BLOCKSIZE)
 		return (false);

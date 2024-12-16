@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <err.h>
 
+#define DEFAULT_SEPARATOR_COUNT 1
 #define DEFAULT_SEPARATOR ""
 
 #define RESET "\x1B[0m"

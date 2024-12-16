@@ -1,55 +1,113 @@
 #include "main.h"
 
-static void _initBCT(BCT_t *bct)
+static void _initBCTData(BCT_Data_t *data)
 {
-	bct->opt.combo = false;
-	bct->opt.permute = false;
-	bct->opt.variant = false;
+	data->opt.print = false;
+	data->opt.variants = false;
+	data->opt.combos = false;
+	data->opt.permutes = false;
 
-	bct->separator = DEFAULT_SEPARATOR;
+	data->separatorCount = DEFAULT_SEPARATOR_COUNT;
+	data->separators = DEFAULT_SEPARATOR;
+	data->variantCount = 0;
+	memset(data->variants, false, sizeof(data->variants));
+	data->threadCount = 1;
+	data->instanceTotal = 1;
+	data->instanceIndex = 0;
 }
 
 static void _printUsage(void)
 {
-	dprintf(STDERR_FILENO, "Usage: %s [-p] [-o | -O] [-v <variants>] [-s <separator>] <encypted-file> <keysize> <word1> [<word2> ...]\n", program_invocation_short_name);
+	dprintf(STDERR_FILENO, "Usage: %s [-p] [-o | -O] [-v <variants>] [-s <separators>] [-t <threadCount>] [-i <instanceNumber>/<instanceTotal>] <keysize> <keyfile> <word1> [<word2> ...]\n", program_invocation_short_name);
 }
 
-static int _parseOptions(BCT_t *bct, int argc, char *argv[])
+static int _parseVariant(BCT_Data_t *data, char *variants)
+{
+	int i;
+	for (i = 0; variants[i]; i++)
+	{
+		char *v = strchr(VARIANT_CHARS, variants[i]);
+		if (v == NULL)
+			return (warnx("Invalid variant: %c", variants[i]), EXIT_FAILURE);
+		int index = v - VARIANT_CHARS;
+		if (!data->variants[index])
+		{
+			data->variants[index] = true;
+			data->variantCount++;
+		}
+	}
+	if (i == 0)
+		return (warnx("No variant specified"), EXIT_FAILURE);
+	return (EXIT_SUCCESS);
+}
+
+static int _parseThread(BCT_Data_t *data, char *threadCountArg)
+{
+	char *endptr;
+	long threadCount = strtol(threadCountArg, &endptr, 10);
+	if (endptr == threadCountArg || *endptr != '\0' || data->threadCount < 1 || INT_MAX < threadCount)
+		return (warnx("Invalid thread count: %s", threadCountArg), EXIT_FAILURE);
+	data->threadCount = threadCount;
+	return (EXIT_SUCCESS);
+}
+
+static int _parseInstance(BCT_Data_t *data, char *instanceArg)
+{
+	char *endptr;
+	long instanceNumber = strtol(instanceArg, &endptr, 10);
+	if (endptr == instanceArg || *endptr != '/' || instanceNumber < 1)
+		return (warnx("Invalid instance number: %s", instanceArg), EXIT_FAILURE);
+	long instanceTotal = strtol(endptr + 1, &endptr, 10);
+	if (endptr == instanceArg || *endptr != '\0' || instanceTotal < instanceNumber)
+		return (warnx("Invalid instance total: %s", instanceArg), EXIT_FAILURE);
+	data->instanceIndex = instanceNumber - 1;
+	data->instanceTotal = instanceTotal;
+	return (EXIT_SUCCESS);
+}
+
+static int _parseOptions(BCT_Data_t *data, int argc, char *argv[])
 {
 	int opt;
 
-	while ((opt = getopt(argc, argv, "poOv:s:")) != -1)
+	while ((opt = getopt(argc, argv, "poOv:s:S:t:i:")) != -1)
 	{
 		switch (opt)
 		{
 		case 'p':
-			bct->opt.print = true;
+			data->opt.print = true;
 			break;
 		case 'o':
-			if (bct->opt.permute)
+			if (data->opt.permutes)
 				return (warnx("Cannot use -o and -O together"), EXIT_FAILURE);
-			bct->opt.combo = true;
+			data->opt.combos = true;
 			break;
 		case 'O':
-			if (bct->opt.combo)
+			if (data->opt.combos)
 				return (warnx("Cannot use -o and -O together"), EXIT_FAILURE);
-			bct->opt.permute = true;
+			data->opt.permutes = true;
 			break;
 		case 'v':
-			bct->opt.variant = true;
-			int i;
-			for (i = 0; optarg[i]; i++)
-			{
-				char *variant = strchr(VARIANT_CHARS, optarg[i]);
-				if (variant == NULL)
-					return (warnx("Invalid variant: %c", optarg[i]), EXIT_FAILURE);
-				bct->variants[variant - VARIANT_CHARS] = true;
-			}
-			if (i == 0)
-				return (warnx("No variant specified"), EXIT_FAILURE);
+			if (_parseVariant(data, optarg))
+				return (EXIT_FAILURE);
+			data->opt.variants = true;
 			break;
 		case 's':
-			bct->separator = optarg;
+			data->separatorCount = strlen(optarg) + 1;
+			data->separators = optarg;
+			break;
+		case 'S':
+			data->separatorCount = strlen(optarg);
+			if (data->separatorCount == 0)
+				return (warnx("Cannot use empty separators with -S"), EXIT_FAILURE);
+			data->separators = optarg;
+			break;
+		case 't':
+			if (_parseThread(data, optarg))
+				return (EXIT_FAILURE);
+			break;
+		case 'i':
+			if (_parseInstance(data, optarg))
+				return (EXIT_FAILURE);
 			break;
 		default:
 			_printUsage();
@@ -59,14 +117,15 @@ static int _parseOptions(BCT_t *bct, int argc, char *argv[])
 	return (EXIT_SUCCESS);
 }
 
-static int _parseKeySize(char *keySize, size_t *keyLen)
+static int _parseKeysize(BCT_Data_t *data, char *keysizeArg)
 {
 	char *endptr;
-	*keyLen = strtoull(keySize, &endptr, 10);
-	if (*endptr != '\0')
-		return (warnx("Invalid keysize: %s", keySize), EXIT_FAILURE);
-	if (*keyLen < BLOCKSIZE)
+	size_t keysize = strtoull(keysizeArg, &endptr, 10);
+	if (endptr == keysizeArg || *endptr != '\0' || errno == ERANGE)
+		return (warnx("Invalid keysize: %s", keysizeArg), EXIT_FAILURE);
+	if (keysize < BLOCKSIZE)
 		return (warnx("Key must be at least 8 bytes long"), EXIT_FAILURE);
+	data->keysize = keysize;
 	return (EXIT_SUCCESS);
 }
 
@@ -131,18 +190,18 @@ static void _freeWords(BCT_Word_t **words, int wordCount)
 	free(words);
 }
 
-static int _parseArgs(BCT_t *bct, int argc, char *argv[], BCT_Word_t ***words, int *wordCount)
+static int _parseArgs(BCT_Data_t *data, int argc, char *argv[], BCT_Word_t ***words, int *wordCount)
 {
 	if (argc < optind + 3)
 	{
 		_printUsage();
 		return (EXIT_FAILURE);
 	}
-	if (_parseKeySize(argv[optind + 1], &bct->keysize))
+	if (_parseKeysize(data, argv[optind + 1]))
 		return (EXIT_FAILURE);
-	bct->key = malloc(bct->keysize + 1);
-	bct->fileKey = _readKeyFile(argv[optind]);
-	if (bct->fileKey == NULL)
+	data->key = malloc(data->keysize + 1);
+	data->fileKey = _readKeyFile(argv[optind]);
+	if (data->fileKey == NULL)
 		return (EXIT_FAILURE);
 	*wordCount = argc - optind - 2;
 	*words = malloc(*wordCount * sizeof(BCT_Word_t *));
@@ -152,25 +211,25 @@ static int _parseArgs(BCT_t *bct, int argc, char *argv[], BCT_Word_t ***words, i
 
 int main(int argc, char *argv[])
 {
-	static BCT_t bct;
+	BCT_Data_t data;
 	BCT_Word_t **words;
 	int wordCount;
 
-	_initBCT(&bct);
-	if (_parseOptions(&bct, argc, argv) || _parseArgs(&bct, argc, argv, &words, &wordCount))
+	_initBCTData(&data);
+	if (_parseOptions(&data, argc, argv) || _parseArgs(&data, argc, argv, &words, &wordCount))
 		return (EXIT_FAILURE);
-	if (BCTester(&bct, words, wordCount))
+	if (BCTester(&data, words, wordCount))
 	{
-		printf(GREEN "SUCCESS:" RESET " %s\n", bct.key);
+		printf(GREEN "SUCCESS:" RESET " %s\n", data.key);
 		_freeWords(words, wordCount);
-		free(bct.key);
+		free(data.key);
 		return (EXIT_SUCCESS);
 	}
 	else
 	{
 		printf(RED "FAILURE\n" RESET);
 		_freeWords(words, wordCount);
-		free(bct.key);
+		free(data.key);
 		return (EXIT_FAILURE);
 	}
 }
