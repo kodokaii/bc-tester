@@ -2,7 +2,7 @@
 
 static uint8_t *_hashKey(char *key, size_t keysize)
 {
-	static uint8_t keyHash[MAXKEYBYTES];
+	uint8_t *keyHash = malloc(MAXKEYBYTES);
 	BLOWFISH_CTX ctx;
 	uint32_t L, R;
 
@@ -18,6 +18,12 @@ static uint8_t *_hashKey(char *key, size_t keysize)
 		memcpy(keyHash + i + sizeof(uint32_t), &R, sizeof(uint32_t));
 	}
 	return (keyHash);
+}
+
+static bool _exitTester(uint8_t *keyHash, bool result)
+{
+	free(keyHash);
+	return (result);
 }
 
 bool BCKeyTester(uint8_t const *keyFile, char *key)
@@ -47,11 +53,11 @@ bool BCKeyTester(uint8_t const *keyFile, char *key)
 			if (stripped)
 			{
 				if (keyFileBlock[i] != keyHash[h])
-					return (false);
+					return (_exitTester(keyHash, false));
 				--h;
 			}
 		}
 		f -= BLOCKSIZE;
 	}
-	return (true);
+	return (_exitTester(keyHash, true));
 }

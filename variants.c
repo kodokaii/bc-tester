@@ -72,10 +72,8 @@ void _freeWordVariants(BCT_t *bct, BCT_Word_t ***wordVariants, int wordCount)
 	free(wordVariants);
 }
 
-static void _variantsSet(BCT_Segment_t *segment, int *wordsVariantOrders, int wordCount, int variantCount)
+static void _variantsSet(size_t index, int *wordsVariantOrders, int wordCount, int variantCount)
 {
-	int index = segment->startVariants;
-
 	for (int i = 0; i < wordCount; ++i)
 	{
 		wordsVariantOrders[i] = index % variantCount;
@@ -100,19 +98,19 @@ static bool _exitTester(BCT_t *bct, BCT_Word_t ***wordsVariants, int *wordsVaria
 	return (result);
 }
 
-bool BCVariantsTester(BCT_t *bct, BCT_Word_t **words, int wordCount)
+bool BCVariantsTester(BCT_t *bct, char *key, int threadIndex, BCT_Word_t **words, int wordCount)
 {
 	BCT_Word_t ***wordsVariants = _generateWordVariants(bct, words, wordCount);
 	int *wordsVariantOrders = calloc(wordCount, sizeof(int));
 	BCT_Word_t **newWords = malloc(wordCount * sizeof(BCT_Word_t *));
 	size_t tested = 0;
 
-	_variantsSet(&bct->ctx.instance, wordsVariantOrders, wordCount, bct->data->variantCount);
-	while (tested < bct->ctx.instance.totalVariants)
+	_variantsSet(bct->ctx.instance.startVariants + bct->ctx.threads[threadIndex].startVariants, wordsVariantOrders, wordCount, bct->data->variantCount);
+	while (tested < bct->ctx.threads[threadIndex].totalVariants)
 	{
 		for (int i = 0; i < wordCount; ++i)
 			newWords[i] = wordsVariants[i][wordsVariantOrders[i]];
-		if (BCOrdersTester(bct, newWords, wordCount))
+		if (BCOrdersTester(bct, key, threadIndex, newWords, wordCount))
 			return (_exitTester(bct, wordsVariants, wordsVariantOrders, newWords, wordCount, true));
 		_variantsIncrement(wordsVariantOrders, wordCount, bct->data->variantCount);
 		++tested;
@@ -126,6 +124,10 @@ size_t BCVariantsCountTest(BCT_t *bct, int wordCount)
 		return (1);
 	size_t count = 1;
 	for (int i = 0; i < wordCount; ++i)
+	{
+		if (SIZE_MAX / bct->data->variantCount < count)
+			return (errno = ERANGE, EXIT_FAILURE);
 		count *= bct->data->variantCount;
+	}
 	return (count);
 }

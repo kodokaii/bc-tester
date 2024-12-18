@@ -23,18 +23,8 @@ static int _getNewWordCount(BCT_Word_t **words, int wordCount, size_t keysize)
 	return (newWordCount);
 }
 
-int *_getWordOrderShifts(int newWordCount)
+static void _permutesSet(size_t index, int *wordOrders, int *wordOrderShifts, int wordCount, int newWordCount)
 {
-	int *wordOrderShifts = malloc(newWordCount * sizeof(int));
-
-	for (int i = 0; i < newWordCount; ++i)
-		wordOrderShifts[i] = newWordCount - i - 1;
-	return (wordOrderShifts);
-}
-
-static void _permutesSet(BCT_Segment_t *segment, int *wordOrders, int *wordOrderShifts, int wordCount, int newWordCount)
-{
-	int index = segment->startOrders;
 	int base = wordCount - newWordCount + 1;
 
 	for (int i = 0; i < newWordCount; ++i)
@@ -45,10 +35,11 @@ static void _permutesSet(BCT_Segment_t *segment, int *wordOrders, int *wordOrder
 	}
 	for (int i = 0; i < newWordCount; ++i)
 	{
+		wordOrderShifts[i] = 0;
 		for (int j = i + 1; j < newWordCount; ++j)
 		{
-			if (wordOrders[i] < wordOrders[j])
-				--wordOrderShifts[i];
+			if (wordOrders[j] <= wordOrders[i] + wordOrderShifts[i])
+				++wordOrderShifts[i];
 		}
 	}
 }
@@ -63,11 +54,11 @@ static void _permutesIncrement(int *wordOrders, int *wordOrderShifts, int wordCo
 		wordOrders[i]++;
 		while (0 <= i)
 		{
-			wordOrderShifts[i] = newWordCount - i - 1;
+			wordOrderShifts[i] = 0;
 			for (int j = i + 1; j < newWordCount; ++j)
 			{
-				if (wordOrders[i] < wordOrders[j])
-					--wordOrderShifts[i];
+				if (wordOrders[j] <= wordOrders[i] + wordOrderShifts[i])
+					++wordOrderShifts[i];
 			}
 			--i;
 		}
@@ -82,20 +73,20 @@ static bool _exitTester(BCT_Word_t **newWords, int *wordOrders, int *wordOrderSh
 	return (result);
 }
 
-bool BCPermutesTester(BCT_t *bct, BCT_Word_t **words, int wordCount)
+bool BCPermutesTester(BCT_t *bct, char *key, int threadIndex, BCT_Word_t **words, int wordCount)
 {
 	int newWordCount = _getNewWordCount(words, wordCount, bct->data->keysize);
 	BCT_Word_t **newWords = malloc(newWordCount * sizeof(BCT_Word_t *));
 	int *wordOrders = calloc(newWordCount, sizeof(int));
-	int *wordOrderShifts = _getWordOrderShifts(newWordCount);
+	int *wordOrderShifts = malloc(newWordCount * sizeof(int));
 	size_t tested = 0;
 
-	_permutesSet(&bct->ctx.instance, wordOrders, wordOrderShifts, wordCount, newWordCount);
-	while (tested < bct->ctx.instance.totalOrders)
+	_permutesSet(bct->ctx.instance.startOrders + bct->ctx.threads[threadIndex].startOrders, wordOrders, wordOrderShifts, wordCount, newWordCount);
+	while (tested < bct->ctx.threads[threadIndex].totalOrders)
 	{
 		for (int i = 0; i < newWordCount; ++i)
 			newWords[i] = words[wordOrders[i] + wordOrderShifts[i]];
-		if (BCSeparatorsTester(bct, newWords, newWordCount))
+		if (BCSeparatorsTester(bct, key, threadIndex, newWords, newWordCount))
 			return (_exitTester(newWords, wordOrders, wordOrderShifts, true));
 		_permutesIncrement(wordOrders, wordOrderShifts, wordCount, newWordCount);
 		++tested;
@@ -108,8 +99,12 @@ size_t BCPermutesCountTest(BCT_t *bct, BCT_Word_t **words, int wordCount)
 	if (!bct->data->opt.permutes)
 		return (1);
 	int newWordCount = _getNewWordCount(words, wordCount, bct->data->keysize);
-	int count = 1;
+	size_t count = 1;
 	for (int i = 0; i < newWordCount; ++i)
+	{
+		if (SIZE_MAX / (wordCount - i) < count)
+			return (errno = ERANGE, EXIT_FAILURE);
 		count *= wordCount - i;
+	}
 	return (count);
 }

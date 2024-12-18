@@ -18,7 +18,7 @@ static void _initBCTData(BCT_Data_t *data)
 
 static void _printUsage(void)
 {
-	dprintf(STDERR_FILENO, "Usage: %s [-p] [-o | -O] [-v <variants>] [-s <separators>] [-t <threadCount>] [-i <instanceNumber>/<instanceTotal>] <keysize> <keyfile> <word1> [<word2> ...]\n", program_invocation_short_name);
+	dprintf(STDERR_FILENO, "Usage: %s [-p] [-o | -O] [-v <variants>] [(-s | -S) <separators>] [-t <threadCount>] [-i <instanceNumber>/<instanceTotal>] <keysize> <keyfile> <word1> [<word2> ...]\n", program_invocation_short_name);
 }
 
 static int _parseVariant(BCT_Data_t *data, char *variants)
@@ -190,7 +190,7 @@ static void _freeWords(BCT_Word_t **words, int wordCount)
 	free(words);
 }
 
-static int _parseArgs(BCT_Data_t *data, int argc, char *argv[], BCT_Word_t ***words, int *wordCount)
+static int _parseArgs(BCT_Data_t *data, int argc, char *argv[], char **key, BCT_Word_t ***words, int *wordCount)
 {
 	if (argc < optind + 3)
 	{
@@ -199,10 +199,10 @@ static int _parseArgs(BCT_Data_t *data, int argc, char *argv[], BCT_Word_t ***wo
 	}
 	if (_parseKeysize(data, argv[optind + 1]))
 		return (EXIT_FAILURE);
-	data->key = malloc(data->keysize + 1);
 	data->fileKey = _readKeyFile(argv[optind]);
 	if (data->fileKey == NULL)
 		return (EXIT_FAILURE);
+	*key = malloc(data->keysize + 1);
 	*wordCount = argc - optind - 2;
 	*words = malloc(*wordCount * sizeof(BCT_Word_t *));
 	_getWords(*words, *wordCount, argv + optind + 2);
@@ -212,24 +212,25 @@ static int _parseArgs(BCT_Data_t *data, int argc, char *argv[], BCT_Word_t ***wo
 int main(int argc, char *argv[])
 {
 	BCT_Data_t data;
+	char *key;
 	BCT_Word_t **words;
 	int wordCount;
 
 	_initBCTData(&data);
-	if (_parseOptions(&data, argc, argv) || _parseArgs(&data, argc, argv, &words, &wordCount))
+	if (_parseOptions(&data, argc, argv) || _parseArgs(&data, argc, argv, &key, &words, &wordCount))
 		return (EXIT_FAILURE);
-	if (BCTester(&data, words, wordCount))
+	if (BCTester(&data, key, words, wordCount))
 	{
-		printf(GREEN "SUCCESS:" RESET " %s\n", data.key);
+		printf(GREEN "SUCCESS:" RESET " %s\n", key);
 		_freeWords(words, wordCount);
-		free(data.key);
+		free(key);
 		return (EXIT_SUCCESS);
 	}
 	else
 	{
 		printf(RED "FAILURE\n" RESET);
 		_freeWords(words, wordCount);
-		free(data.key);
+		free(key);
 		return (EXIT_FAILURE);
 	}
 }

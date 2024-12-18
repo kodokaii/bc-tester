@@ -1,6 +1,8 @@
 #pragma once
 
 #include "bckey-tester.h"
+#include <pthread.h>
+#include <semaphore.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -10,8 +12,12 @@
 #include <limits.h>
 #include <errno.h>
 #include <ctype.h>
+#include <time.h>
+#include <err.h>
 
-#define PROGRESS_STEP 200000
+#define ILLUSTRATIVE_TEST_PER_SECOND 20000
+#define MAX_PROGRESS_STEP 100000
+#define MAX_ESTIMATE_STEP 200000
 
 #define VARIANT_MAX_COUNT 4
 #define VARIANT_NORMAL 0
@@ -20,20 +26,21 @@
 #define VARIANT_UPPER 3
 #define VARIANT_CHARS "nlcu"
 
+#define NO_THREAD_FOUND -1
+
 typedef struct
 {
 	size_t totalVariants;
 	size_t totalOrders;
 	size_t totalSeparators;
-	size_t divisorVariants;
-	size_t divisorOrders;
-	size_t divisorSeparators;
-	size_t rest;
+	int divisorVariants;
+	int divisorOrders;
+	int divisorSeparators;
+	int rest;
 } BCT_Distribution_t;
 
 typedef struct
 {
-	size_t tested;
 	size_t total;
 	size_t startVariants;
 	size_t startOrders;
@@ -61,8 +68,14 @@ typedef struct
 {
 	BCT_Segment_t instance;
 	BCT_Segment_t *threads;
+	double testPerSecond;
+	time_t startTime;
+	size_t estimateStep;
+	size_t oldEstimate;
 	size_t progressStep;
-	size_t oldStep;
+	size_t oldProgress;
+	_Atomic int threadFound;
+	_Atomic size_t tested;
 } BCT_CTX_t;
 
 typedef struct
@@ -77,7 +90,6 @@ typedef struct
 	int instanceIndex;
 	uint8_t *fileKey;
 	size_t keysize;
-	char *key;
 } BCT_Data_t;
 
 typedef struct
@@ -86,24 +98,23 @@ typedef struct
 	BCT_CTX_t ctx;
 } BCT_t;
 
-bool BCTester(BCT_Data_t *data, BCT_Word_t **words, int wordCount);
+bool BCTester(BCT_Data_t *data, char *key, BCT_Word_t **words, int wordCount);
 
-bool BCVariantsTester(BCT_t *bct, BCT_Word_t **words, int wordCount);
+bool BCVariantsTester(BCT_t *bct, char *key, int threadIndex, BCT_Word_t **words, int wordCount);
 size_t BCVariantsCountTest(BCT_t *bct, int wordCount);
 
-bool BCOrdersTester(BCT_t *bct, BCT_Word_t **words, int wordCount);
+bool BCOrdersTester(BCT_t *bct, char *key, int threadIndex, BCT_Word_t **words, int wordCount);
 size_t BCOrdersCountTest(BCT_t *bct, BCT_Word_t **words, int wordCount);
 
-bool BCCombosTester(BCT_t *bct, BCT_Word_t **words, int wordCount);
+bool BCCombosTester(BCT_t *bct, char *key, int threadIndex, BCT_Word_t **words, int wordCount);
 size_t BCCombosCountTest(BCT_t *bct, BCT_Word_t **words, int wordCount);
 
-bool BCPermutesTester(BCT_t *bct, BCT_Word_t **words, int wordCount);
+bool BCPermutesTester(BCT_t *bct, char *key, int threadIndex, BCT_Word_t **words, int wordCount);
 size_t BCPermutesCountTest(BCT_t *bct, BCT_Word_t **words, int wordCount);
 
-bool BCSeparatorsTester(BCT_t *bct, BCT_Word_t **words, int wordCount);
+bool BCSeparatorsTester(BCT_t *bct, char *key, int threadIndex, BCT_Word_t **words, int wordCount);
 size_t BCSeparatorsCountTest(BCT_t *bct);
 
-void progress(BCT_t *bct);
+void progress(BCT_t *bct, char *key, int threadIndex);
 
-size_t factorial(size_t n);
-void factorize(size_t n, void (*callback)(void *, size_t), void *data);
+void factorize(int n, void (*callback)(void *, int), void *data);

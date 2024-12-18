@@ -1,6 +1,6 @@
 #include "bc-tester.h"
 
-static void _generateKey(BCT_t *bct, BCT_Word_t **words, int wordCount, int separatorsIndex)
+static void _generateKey(BCT_t *bct, char *key, BCT_Word_t **words, int wordCount, int separatorsIndex)
 {
 	size_t k = 0;
 
@@ -9,29 +9,36 @@ static void _generateKey(BCT_t *bct, BCT_Word_t **words, int wordCount, int sepa
 		size_t len = words[i]->len;
 		if (bct->data->keysize < k + len)
 			len = bct->data->keysize - k;
-		memcpy(bct->data->key + k, words[i]->str, len);
+		memcpy(key + k, words[i]->str, len);
 		k += len;
 		if (i + 1 < wordCount && k < bct->data->keysize && bct->data->separators[separatorsIndex] != '\0')
-			bct->data->key[k++] = bct->data->separators[separatorsIndex];
+			key[k++] = bct->data->separators[separatorsIndex];
 	}
-	bct->data->key[k] = '\0';
+	key[k] = '\0';
 }
 
-bool BCSeparatorsTester(BCT_t *bct, BCT_Word_t **words, int wordCount)
+static bool _exitTester(BCT_t *bct, int threadIndex, bool result)
 {
-	int separatorsIndex = bct->ctx.instance.startSeparators;
+	if (result)
+		bct->ctx.threadFound = threadIndex;
+	return (result);
+}
+
+bool BCSeparatorsTester(BCT_t *bct, char *key, int threadIndex, BCT_Word_t **words, int wordCount)
+{
+	int separatorsIndex = bct->ctx.instance.startSeparators + bct->ctx.threads[threadIndex].startSeparators;
 	size_t tested = 0;
 
-	while (tested < bct->ctx.instance.totalSeparators)
+	while (tested < bct->ctx.threads[threadIndex].totalSeparators)
 	{
-		_generateKey(bct, words, wordCount, separatorsIndex);
-		progress(bct);
-		if (BCKeyTester(bct->data->fileKey, bct->data->key))
-			return (true);
+		_generateKey(bct, key, words, wordCount, separatorsIndex);
+		progress(bct, key, threadIndex);
+		if (BCKeyTester(bct->data->fileKey, key))
+			return (_exitTester(bct, threadIndex, true));
 		++separatorsIndex;
 		++tested;
 	}
-	return (false);
+	return (_exitTester(bct, threadIndex, false));
 }
 
 size_t BCSeparatorsCountTest(BCT_t *bct)

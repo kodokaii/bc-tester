@@ -1,15 +1,6 @@
 #include "bc-tester.h"
 
-size_t factorial(size_t n)
-{
-	size_t fact = 1;
-
-	for (size_t i = 1; i <= n; ++i)
-		fact *= i;
-	return (fact);
-}
-
-void factorize(size_t n, void (*callback)(void *, size_t), void *data)
+void factorize(int n, void (*callback)(void *, int), void *data)
 {
 	while (n % 2 == 0)
 	{
